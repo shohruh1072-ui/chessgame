@@ -1,0 +1,1593 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GRAM Chess PVP</title>
+    <!-- Подключение Socket.IO клиентом с CDN -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <!-- TON Connect UI SDK -->
+    <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
+    
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 0;
+            background: url('phonmenu.png') no-repeat center center fixed; 
+            background-size: cover; background-color: #0f0f10; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh; overflow: hidden;
+            user-select: none; -webkit-user-select: none;
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        /* Виджет кнопки TON Connect */
+        #ton-connect-wrapper {
+            position: fixed; top: 12px; right: 12px; z-index: 1000;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .gram-balance-badge {
+            background: rgba(28, 28, 30, 0.9); border: 1px solid #0098ea;
+            border-radius: 16px; padding: 6px 12px; color: #0098ea;
+            font-size: 13px; font-weight: 800; display: none; backdrop-filter: blur(5px);
+        }
+
+        .screen { 
+            display: none; width: 100%; height: 100vh; 
+            max-width: 500px; margin: 0 auto;
+            box-sizing: border-box; position: relative;
+        }
+        .screen.active { display: flex; flex-direction: column; }
+
+        .back-btn {
+            background: none; border: none; color: #2481cc;
+            font-size: 16px; font-weight: 600; cursor: pointer;
+            margin-bottom: 10px; align-self: flex-start; padding: 5px 10px; z-index: 10;
+        }
+
+        /* Главное меню */
+        #main-menu-screen { justify-content: center; align-items: center; position: relative; }
+        
+        .menu-user-profile {
+            position: absolute; top: 12px; left: 12px; z-index: 10;
+            display: flex; align-items: center; gap: 8px;
+            background: rgba(28, 28, 30, 0.85); border: 1px solid #2c2c2e;
+            border-radius: 20px; padding: 4px 12px 4px 4px; backdrop-filter: blur(5px);
+        }
+        .profile-avatar-img {
+            width: 38px; height: 38px; border-radius: 50%;
+            background-size: cover; background-position: center; background-color: #2c2c2e;
+            border: 2px solid #0098ea;
+        }
+        .profile-username-text {
+            color: #ffffff; font-size: 14px; font-weight: 700; max-width: 110px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        .menu-container { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 85%; max-width: 340px; padding: 20px; }
+
+        .menu-btn {
+            display: block; width: 100%; padding: 18px 24px; margin: 10px 0; 
+            font-size: 1.3rem; font-weight: bold; letter-spacing: 2px; text-transform: uppercase;
+            color: #f0d9b5; background-color: #312e2b; border: 3px solid #b58863; 
+            border-radius: 12px; cursor: pointer; transition: all 0.2s ease-in-out;
+            -webkit-tap-highlight-color: transparent; 
+        }
+
+        .menu-btn:hover {
+            background-color: #f0d9b5; color: #312e2b; border-color: #f0d9b5;
+            box-shadow: 0 6px 20px rgba(240, 217, 181, 0.5); transform: translateY(-2px); 
+        }
+
+        #bet-selection-screen { padding: 16px; background-color: rgba(15, 15, 16, 0.95); overflow-y: auto; }
+        .header-title { text-align: center; font-size: 20px; font-weight: 700; margin-bottom: 16px; color: #ffffff; }
+
+        .lobby-list { display: flex; flex-direction: column; gap: 12px; width: 100%; padding-bottom: 20px; }
+        .lobby-row { display: flex; align-items: center; background-color: #1c1c1e; padding: 12px 16px; border-radius: 16px; border: 1px solid #2c2c2e; }
+        .board-img { width: 70px; height: 70px; object-fit: cover; border-radius: 10px; margin-right: 14px; flex-shrink: 0; background-color: #2c2c2e; }
+        .price-info { flex-grow: 1; font-size: 18px; font-weight: 800; color: #0098ea; }
+        .price-info.free { color: #34c759; }
+        .price-info.bot { color: #ff9500; }
+        .action-buttons { display: flex; flex-direction: column; gap: 8px; width: 120px; }
+
+        .btn { border: none; padding: 10px 12px; font-size: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; text-align: center; }
+        .btn:active { transform: scale(0.96); }
+        .btn-find { background-color: #2481cc; color: #ffffff; }
+        .btn-create { background-color: #34c759; color: #ffffff; }
+        .btn-play-single { background-color: #ff9500; color: #ffffff; width: 100%; padding: 14px 12px; font-size: 13px; }
+
+        #find-friend-screen { background-color: rgba(0, 0, 0, 0.95); }
+        .app-container { width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box; }
+        .search-wrapper { position: relative; width: 100%; }
+        .search-input { width: 100%; padding: 16px 50px 16px 16px; background-color: #1c1c1e; border: 2px solid #2c2c2e; border-radius: 14px; color: #ffffff; font-size: 18px; outline: none; }
+        .search-image-icon { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; object-fit: contain; cursor: pointer; }
+        .content-area { flex-grow: 1; padding: 15px 0; overflow-y: auto; }
+        .navigation-menu { display: flex; gap: 10px; width: 100%; }
+        .nav-btn { flex: 1; display: flex; align-items: center; justify-content: center; background-color: #1c1c1e; border: 2px solid #2c2c2e; border-radius: 14px; padding: 14px 5px; color: #a0a0a5; font-size: 14px; font-weight: 700; cursor: pointer; }
+        .nav-btn.active { background-color: #2c2c2e; border-color: #ffffff; color: #ffffff; }
+
+        .referral-box {
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+            background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 16px; padding: 18px; color: white; margin-bottom: 15px;
+        }
+        .referral-title { font-size: 18px; font-weight: 800; color: #ffb300; margin-bottom: 6px; }
+        .referral-desc { font-size: 13px; color: #a0a0a5; line-height: 1.4; margin-bottom: 14px; }
+        .referral-link-input { width: 100%; background: #0f0f10; border: 1px solid #2c2c2e; color: #34c759; padding: 10px; border-radius: 10px; font-size: 12px; text-align: center; margin-bottom: 10px; outline: none; }
+        .btn-copy-link { background: #2481cc; color: white; border: none; padding: 12px; border-radius: 10px; font-weight: 700; font-size: 13px; cursor: pointer; width: 100%; margin-bottom: 14px; }
+
+        .earnings-card {
+            width: 100%; background: #252528; border: 1px solid #3a3a3c; border-radius: 12px; padding: 12px;
+            display: flex; flex-direction: column; gap: 8px; text-align: left;
+        }
+        .earnings-row { display: flex; justify-content: space-between; align-items: center; }
+        .earnings-val { font-size: 16px; font-weight: 800; color: #0098ea; }
+        .btn-withdraw {
+            background: #34c759; color: white; border: none; padding: 10px; border-radius: 8px;
+            font-weight: 700; font-size: 12px; cursor: pointer; text-align: center;
+        }
+        .btn-withdraw:disabled { background: #48484a; color: #8e8e93; cursor: not-allowed; }
+
+        .ref-friends-title { font-size: 14px; font-weight: 700; color: #ffffff; margin: 10px 0 8px 4px; text-align: left; }
+        .ref-item { display: flex; align-items: center; justify-content: space-between; background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+        .ref-earned { font-size: 13px; font-weight: 800; color: #34c759; }
+
+        .friends-list { display: flex; flex-direction: column; gap: 10px; color: white; }
+        .friend-item { display: flex; align-items: center; justify-content: space-between; background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 12px; padding: 12px; }
+        .friend-info { display: flex; align-items: center; gap: 10px; }
+        .friend-avatar { width: 44px; height: 44px; border-radius: 50%; background-color: #2c2c2e; background-size: cover; background-position: center; border: 1px solid #3a3a3c; }
+        .friend-name-box { display: flex; flex-direction: column; }
+        .friend-name { font-size: 14px; font-weight: 600; color: #ffffff; }
+        .friend-status { font-size: 11px; font-weight: 600; margin-top: 2px; }
+        .friend-status.online { color: #34c759; }
+        .friend-status.offline { color: #8a99ad; }
+        .btn-invite-friend { background-color: #2481cc; color: #ffffff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; }
+        .no-friends { color: #8a99ad; text-align: center; margin-top: 30px; font-size: 14px; }
+
+        /* ЭКРАН ИГРЫ */
+        #game-play-screen { 
+            justify-content: center; 
+            align-items: center; 
+            background-color: #0b0e14; 
+            position: relative; 
+            padding: 0;
+        }
+        
+        #main-layout { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            width: 100%; 
+            height: 100%; 
+            position: relative; 
+            gap: 6px;
+        }
+
+        /* ИГРОКИ И АВАТАРКИ */
+        .player-badge { 
+            width: 96vw;
+            max-width: 470px;
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            padding: 6px 12px; 
+            color: white; 
+            min-height: 58px; 
+            background: rgba(28, 28, 30, 0.7); 
+            border-radius: 14px; 
+            backdrop-filter: blur(8px);
+        }
+        .player-left-group { display: flex; align-items: center; }
+        .player-avatar { 
+            width: 48px; 
+            height: 48px; 
+            border-radius: 50%; 
+            background-color: #1e2530; 
+            background-size: cover; 
+            background-position: center; 
+            margin-right: 12px; 
+            border: 2px solid #0098ea; 
+            flex-shrink: 0;
+            display: none; 
+            box-shadow: 0 0 8px rgba(0, 152, 234, 0.4);
+        }
+        .player-info { display: flex; flex-direction: column; }
+        .player-name, .my-name { font-size: 1rem; font-weight: 700; color: #ffffff; }
+        .player-id { font-size: 0.78rem; color: #8a99ad; margin-top: 2px; }
+
+        /* ТАЙМЕРЫ */
+        .timer-box {
+            background: #18181a; border: 2px solid #3a3a3c; border-radius: 10px;
+            padding: 6px 14px; font-family: 'Courier New', Courier, monospace;
+            font-size: 1.5rem; font-weight: 900; color: #ffffff; letter-spacing: 1.5px;
+            transition: all 0.3s ease; display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); min-width: 95px;
+        }
+        .timer-box.active-turn {
+            border-color: #34c759; color: #34c759;
+            box-shadow: 0 0 12px rgba(52, 199, 89, 0.4);
+            background: #122115;
+        }
+        .timer-box.low-time {
+            background: rgba(255, 59, 48, 0.25); border-color: #ff3b30; color: #ff3b30;
+            animation: pulse-red 1s infinite alternate;
+        }
+        @keyframes pulse-red {
+            0% { transform: scale(1); box-shadow: 0 0 5px rgba(255, 59, 48, 0.4); }
+            100% { transform: scale(1.06); box-shadow: 0 0 18px rgba(255, 59, 48, 0.9); }
+        }
+
+        /* ОБЩИЙ БАНК (PRIZE POOL) */
+        .prize-pool-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: linear-gradient(135deg, rgba(28, 28, 30, 0.95), rgba(15, 15, 16, 0.98));
+            border: 1px solid rgba(0, 152, 234, 0.7);
+            box-shadow: 0 0 14px rgba(0, 152, 234, 0.3);
+            border-radius: 20px;
+            padding: 5px 16px;
+            margin: 2px 0;
+            backdrop-filter: blur(8px);
+            z-index: 15;
+        }
+        .prize-pool-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #8a99ad;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .prize-pool-val {
+            font-size: 15px;
+            font-weight: 900;
+            color: #0098ea;
+            text-shadow: 0 0 8px rgba(0, 152, 234, 0.5);
+        }
+
+        .invite-friend-box {
+            display: none; width: 96vw; max-width: 470px; height: 52px; background: #1c1c1e; border: 2px dashed #34c759;
+            border-radius: 12px; align-items: center; justify-content: center; cursor: pointer; gap: 10px; color: #34c759; font-weight: 700; font-size: 14px;
+        }
+        .invite-friend-box .plus-icon {
+            width: 28px; height: 28px; background-color: #34c759; color: #ffffff;
+            border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold;
+        }
+
+        /* КОНТЕЙНЕР ДОСКИ */
+        #game-container { 
+            width: 96vw; height: 96vw; 
+            max-width: 470px; max-height: 470px; 
+            position: relative; margin: 2px 0; box-sizing: border-box; 
+        }
+        #chessboard { width: 100%; height: 100%; display: block; border-radius: 8px; }
+
+        .chess-piece { 
+            position: absolute; 
+            background-repeat: no-repeat; 
+            background-position: center center; 
+            pointer-events: none; 
+            transform: translate(-50%, -50%); 
+            z-index: 10; 
+            transition: left 0.35s cubic-bezier(0.25, 1, 0.5, 1), top 0.35s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease, transform 0.3s ease; 
+            opacity: 1;
+        }
+
+        .chess-piece.fade-out {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.5);
+        }
+
+        .move-indicator { 
+            position: absolute; 
+            width: 12.5%; 
+            height: 12.5%; 
+            transform: translate(-50%, -50%); 
+            pointer-events: none; 
+            z-index: 5; 
+            border-radius: 8px; 
+            box-sizing: border-box;
+            transition: all 0.2s ease;
+        }
+        .move-indicator.normal { 
+            background-color: rgba(0, 152, 234, 0.4); 
+            border: 2px solid rgba(0, 152, 234, 0.8);
+            box-shadow: inset 0 0 10px rgba(0, 152, 234, 0.5); 
+        }
+        .move-indicator.attack { 
+            background-color: rgba(255, 59, 48, 0.45); 
+            border: 2px solid rgba(255, 59, 48, 0.9);
+            box-shadow: inset 0 0 12px rgba(255, 59, 48, 0.7); 
+        }
+
+        /* ПОДСВЕТКА КЛЕТКИ ПРИ ШАХЕ */
+        .king-in-check {
+            position: absolute;
+            width: 12.5%;
+            height: 12.5%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 4;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 0, 0, 0.85) 0%, rgba(255, 0, 0, 0.4) 60%, rgba(255, 0, 0, 0) 100%);
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.9);
+            animation: pulse-king-check 1.2s infinite alternate;
+        }
+        @keyframes pulse-king-check {
+            0% { transform: translate(-50%, -50%) scale(0.85); opacity: 0.7; }
+            100% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+        }
+
+        .chess-piece.selected { filter: drop-shadow(0 0 12px rgba(0, 150, 255, 0.9)); z-index: 20; }
+        
+        #game-over-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(11, 14, 20, 0.95); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 200; opacity: 0;
+            pointer-events: none; transition: opacity 0.3s ease;
+        }
+        #game-over-screen.show { opacity: 1; pointer-events: auto; }
+        #game-over-text { color: #ffffff; font-size: 1.8rem; font-weight: 800; text-transform: uppercase; text-align: center; margin-bottom: 25px; text-shadow: 0 0 25px rgba(67, 100, 247, 0.7); }
+        
+        .game-over-buttons { display: flex; flex-direction: column; gap: 12px; width: 75%; max-width: 240px; }
+        .end-btn { width: 100%; padding: 14px; font-size: 1rem; font-weight: 700; border-radius: 12px; border: none; cursor: pointer; text-align: center; text-transform: uppercase; letter-spacing: 1px; }
+        .btn-rematch { background: linear-gradient(135deg, #2481cc, #0052d4); color: white; box-shadow: 0 4px 15px rgba(36, 129, 204, 0.4); }
+        .btn-exit-lobby { background-color: #1c1c1e; color: #ffffff; border: 2px solid #2c2c2e; }
+
+        .leave-game-btn { 
+            position: absolute; top: 12px; left: 12px; 
+            background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.25); 
+            color: #ffffff; padding: 6px 14px; font-size: 13px; font-weight: 700; 
+            border-radius: 10px; cursor: pointer; z-index: 110; 
+            backdrop-filter: blur(8px);
+        }
+        
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(11, 14, 20, 0.85); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 300; backdrop-filter: blur(5px); }
+        .modal-overlay.show { display: flex; }
+        .modal-box { background-color: #1c1c1e; border: 2px solid #2c2c2e; border-radius: 16px; padding: 22px; width: 85%; max-width: 320px; text-align: center; }
+        .modal-title { color: #ffffff; font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; word-break: break-word; }
+        .modal-buttons { display: flex; gap: 10px; width: 100%; }
+        .modal-btn { flex: 1; padding: 12px; font-size: 14px; font-weight: 700; border-radius: 10px; border: none; cursor: pointer; }
+        .btn-accept { background-color: #34c759; color: white; }
+        .btn-decline { background-color: #ff3b30; color: white; }
+        .btn-ok { background-color: #2481cc; color: white; width: 100%; }
+
+        @media (max-width: 768px) {
+            #game-play-screen {
+                padding-top: 20px;
+            }
+            .player-avatar {
+                width: 44px;
+                height: 44px;
+            }
+            .timer-box { font-size: 1.35rem; padding: 5px 12px; min-width: 85px; }
+            .invite-friend-box { width: 96vw; max-width: 470px; background: transparent; border: none; justify-content: flex-start; padding: 5px 0; height: auto; }
+            .invite-friend-box .plus-icon { background: transparent; color: #34c759; font-size: 32px; font-weight: 300; width: auto; height: auto; padding: 0; margin-right: 8px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ton-connect-wrapper">
+        <div class="gram-balance-badge" id="gram-balance-badge">0 GRAM</div>
+        <div id="ton-connect-btn"></div>
+    </div>
+
+    <!-- ЭКРАН 1: МЕНЮ -->
+    <div id="main-menu-screen" class="screen active">
+        <div class="menu-user-profile" id="menu-user-profile">
+            <div class="profile-avatar-img" id="menu-avatar"></div>
+            <div class="profile-username-text" id="menu-username">@Игрок</div>
+        </div>
+
+        <div class="menu-container">
+            <button class="menu-btn" id="play-btn">ИГРАТЬ</button>
+            <button class="menu-btn" id="find-friend-btn">НАЙТИ ДРУГА</button>
+        </div>
+    </div>
+
+    <!-- ЭКРАН 2: СТАВКИ GRAM -->
+    <div id="bet-selection-screen" class="screen">
+        <button class="back-btn" id="back-from-bets-btn">← Назад в меню</button>
+        <div class="header-title">Выбор режима / ставки</div>
+        <div class="lobby-list" id="lobby-list-container"></div>
+    </div>
+
+    <!-- ЭКРАН 3: НАЙТИ ДРУГА / ДРУЗЬЯ / ПРИГЛАСИТЬ -->
+    <div id="find-friend-screen" class="screen">
+        <div class="app-container">
+            <div>
+                <button class="back-btn" id="back-from-search-btn">← Назад в меню</button>
+                <div class="header-section" id="search-section">
+                    <div class="search-wrapper">
+                        <input type="text" id="search-friend-input" class="search-input" placeholder="Введи ID игрока">
+                        <img src="lup.png" alt="Поиск" class="search-image-icon" onclick="searchFriend()">
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-area" id="friends-content-area"></div>
+
+            <div class="navigation-menu">
+                <button class="nav-btn active" id="nav-search-btn" onclick="openTab('search')">Искать</button>
+                <button class="nav-btn" id="nav-invite-btn" onclick="openTab('invite')">Пригласить</button>
+                <button class="nav-btn" id="nav-friends-btn" onclick="openTab('friends')">Друзья</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ЭКРАН 4: ИГРА -->
+    <div id="game-play-screen" class="screen">
+        <button class="leave-game-btn" id="leave-game-btn">Выйти</button>
+
+        <div id="game-over-screen">
+            <div id="game-over-text">Победил Игрок</div>
+            <div class="game-over-buttons">
+                <button class="end-btn btn-rematch" id="rematch-btn">Играть снова</button>
+                <button class="end-btn btn-exit-lobby" id="exit-to-lobby-btn">Выйти</button>
+            </div>
+        </div>
+
+        <div id="main-layout">
+            <div id="leave-dialog-overlay" class="modal-overlay">
+                <div class="modal-box">
+                    <div class="modal-title">Выход из игры</div>
+                    <div style="color: #a0a0a5; font-size: 0.9rem; margin-bottom: 20px;">Партия еще идет. Вы хотите вернуться в игру или признать поражение?</div>
+                    <div class="modal-buttons" style="flex-direction: column;">
+                        <button class="modal-btn btn-accept" id="dialog-resume-btn">Продолжить партию</button>
+                        <button class="modal-btn btn-decline" id="dialog-surrender-btn">Сдаться</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- СОПЕРНИК (ВЕРХ) -->
+            <div class="player-badge" id="opponent-badge">
+                <div class="player-left-group">
+                    <div class="player-avatar" id="opponent-avatar"></div>
+                    <div class="player-info">
+                        <div class="player-name" id="opponent-name">Поиск соперника...</div>
+                        <div class="player-id" id="opponent-id"></div>
+                    </div>
+                </div>
+                <div class="timer-box" id="opponent-timer">02:00</div>
+            </div>
+
+            <div class="invite-friend-box" id="invite-friend-box" onclick="inviteFriend()">
+                <div class="plus-icon">+</div>
+                <span>Пригласить друга</span>
+            </div>
+
+            <!-- ОБЩИЙ БАНК -->
+            <div class="prize-pool-badge" id="prize-pool-badge">
+                <span class="prize-pool-label">Общий банк:</span>
+                <span class="prize-pool-val" id="prize-pool-amount">0 GRAM</span>
+            </div>
+
+            <!-- ДОСКА -->
+            <div id="game-container">
+                <img id="chessboard" src="chessboard.png" alt="Chessboard">
+            </div>
+
+            <!-- ВЫ (НИЗ) -->
+            <div class="player-badge" id="my-badge">
+                <div class="player-left-group">
+                    <div class="player-avatar" id="my-avatar" style="background-image: url('default-avatar.png'); display: block;"></div>
+                    <div class="player-info">
+                        <div class="my-name" id="my-name">Вы: @Тест_Ник</div>
+                        <div class="player-id" id="my-id">ID: ...</div>
+                    </div>
+                </div>
+                <div class="timer-box" id="my-timer">02:00</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНЫЕ ОКНА -->
+    <div id="invite-received-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div id="invite-modal-text" class="modal-title">@ник пригласил вас в игру за X GRAM</div>
+            <div class="modal-buttons">
+                <button class="modal-btn btn-accept" onclick="respondToInvite(true)">ОК</button>
+                <button class="modal-btn btn-decline" onclick="respondToInvite(false)">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="invite-declined-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div id="declined-modal-text" class="modal-title">@ник отказался от игры</div>
+            <div class="modal-buttons">
+                <button class="modal-btn btn-ok" onclick="closeDeclinedModal()">ОК</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chessGame = new Chess();
+
+        // --- ЗВУКОВЫЕ ЭФФЕКТЫ ---
+        const moveSound = new Audio('knock.mp3');
+        const captureSound = new Audio('puuuk.mp3');
+
+        moveSound.volume = 0.3;
+        captureSound.volume = 0.4;
+
+        function playSound(audio) {
+            try {
+                audio.currentTime = 0;
+                audio.play().catch(e => console.log("Автовоспроизведение аудио ограничено:", e));
+            } catch (err) {
+                console.error("Ошибка звука:", err);
+            }
+        }
+
+        const tg = window.Telegram?.WebApp;
+        if (tg) { 
+            tg.ready(); 
+            tg.expand(); 
+        }
+
+        function triggerHaptic(type = 'light') {
+            if (tg?.HapticFeedback) {
+                if (type === 'light') tg.HapticFeedback.impactOccurred('light');
+                else if (type === 'medium') tg.HapticFeedback.impactOccurred('medium');
+                else if (type === 'error') tg.HapticFeedback.notificationOccurred('error');
+                else if (type === 'success') tg.HapticFeedback.notificationOccurred('success');
+            }
+        }
+
+        function getOrCreateLocalUserId() {
+            let id = localStorage.getItem('unique_chess_tg_id');
+            if (!id) {
+                id = 'LocalID-' + Math.floor(100000 + Math.random() * 900000);
+                localStorage.setItem('unique_chess_tg_id', id);
+            }
+            return id;
+        }
+
+        let referrerId = null;
+        if (tg?.initDataUnsafe?.start_param) {
+            referrerId = tg.initDataUnsafe.start_param;
+        }
+
+        const tgUser = tg?.initDataUnsafe?.user;
+        const myUsername = tgUser ? (tgUser.username ? `@${tgUser.username}` : tgUser.first_name) : "@Игрок_ПК";
+        const myTgId = tgUser ? tgUser.id.toString() : getOrCreateLocalUserId();
+        const myAvatarUrl = tgUser?.photo_url || "default-avatar.png"; 
+
+        document.getElementById('menu-username').innerText = myUsername;
+        document.getElementById('menu-avatar').style.backgroundImage = `url('${myAvatarUrl}')`;
+
+        document.getElementById('my-name').innerText = `Вы: ${myUsername}`;
+        document.getElementById('my-id').innerText = `ID: ${myTgId}`;
+        document.getElementById('my-avatar').style.backgroundImage = `url('${myAvatarUrl}')`;
+
+        let currentWalletAddress = null;
+        let currentGramBalance = 0;
+        let myRefEarnings = 0; 
+        let myInvitedFriendsDetails = []; 
+
+        const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+            manifestUrl: 'https://raw.githubusercontent.com/ton-community/tutorials/main/03-client/tonconnect-manifest.json',
+            buttonRootId: 'ton-connect-btn'
+        });
+
+        tonConnectUI.onStatusChange(async (wallet) => {
+            const badge = document.getElementById('gram-balance-badge');
+            if (wallet) {
+                currentWalletAddress = wallet.account.address;
+                await fetchRealGramBalance(currentWalletAddress);
+                badge.style.display = 'block';
+                if (socket) {
+                    socket.emit('link_ton_wallet', { address: currentWalletAddress });
+                }
+            } else {
+                currentWalletAddress = null;
+                badge.style.display = 'none';
+            }
+        });
+
+        async function fetchRealGramBalance(address) {
+            try {
+                const res = await fetch(`https://toncenter.com/api/v2/getAddressBalance?address=${address}`);
+                const data = await res.json();
+                if (data.ok) {
+                    currentGramBalance = (parseInt(data.result) / 1e9);
+                    document.getElementById('gram-balance-badge').innerText = `${currentGramBalance.toFixed(2)} GRAM`;
+                }
+            } catch (e) {
+                console.error("Ошибка загрузки баланса GRAM:", e);
+            }
+        }
+
+        function updatePrizePoolUI(betAmount) {
+            const totalBank = betAmount * 2;
+            const amountEl = document.getElementById('prize-pool-amount');
+            if (amountEl) {
+                amountEl.innerText = `${totalBank} GRAM`;
+            }
+        }
+
+        const lobbyContainer = document.getElementById('lobby-list-container');
+        
+        const botRow = document.createElement('div');
+        botRow.className = 'lobby-row';
+        botRow.innerHTML = `
+            <img src="board1.png" alt="Board" class="board-img">
+            <div class="price-info bot">Игра с ботом</div>
+            <div class="action-buttons" style="width: 140px;">
+                <button class="btn btn-play-single" onclick="startBotGame()">Играть</button>
+            </div>
+        `;
+        lobbyContainer.appendChild(botRow);
+
+        const freeRow = document.createElement('div');
+        freeRow.className = 'lobby-row';
+        freeRow.innerHTML = `
+            <img src="board1.png" alt="Board" class="board-img">
+            <div class="price-info free">Бесплатно</div>
+            <div class="action-buttons">
+                <button class="btn btn-find" onclick="action('find', 0)">Найти игру</button>
+                <button class="btn btn-create" onclick="action('create', 0)">Создать</button>
+            </div>
+        `;
+        lobbyContainer.appendChild(freeRow);
+
+        const bets = [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 25, 50, 100];
+        bets.forEach(b => {
+            const row = document.createElement('div');
+            row.className = 'lobby-row';
+            row.innerHTML = `
+                <img src="board1.png" alt="Board" class="board-img">
+                <div class="price-info">${b} GRAM</div>
+                <div class="action-buttons">
+                    <button class="btn btn-find" onclick="action('find', ${b})">Найти игру</button>
+                    <button class="btn btn-create" onclick="action('create', ${b})">Создать</button>
+                </div>
+            `;
+            lobbyContainer.appendChild(row);
+        });
+
+        let socket;
+        let myColor = 'white'; 
+        let hasOpponentJoined = false; 
+        let isBotGame = false;
+        let currentBet = 0;
+        let currentActionMode = 'find';
+        let currentRoomId = null;
+
+        const GAME_TIME = 120;
+        let myTime = GAME_TIME;
+        let opponentTime = GAME_TIME;
+        let timerInterval = null;
+
+        let myFriends = [];
+        let incomingInviteData = null; 
+
+        const opBadge = document.getElementById('opponent-badge');
+        const inviteBox = document.getElementById('invite-friend-box');
+        const opName = document.getElementById('opponent-name');
+        const opId = document.getElementById('opponent-id');
+        const opAvatar = document.getElementById('opponent-avatar');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const gameOverText = document.getElementById('game-over-text');
+        const leaveDialogOverlay = document.getElementById('leave-dialog-overlay');
+
+        const myTimerEl = document.getElementById('my-timer');
+        const opponentTimerEl = document.getElementById('opponent-timer');
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+        function updateTimerUI() {
+            myTimerEl.innerText = formatTime(myTime);
+            opponentTimerEl.innerText = formatTime(opponentTime);
+
+            myTimerEl.classList.toggle('low-time', myTime <= 15);
+            opponentTimerEl.classList.toggle('low-time', opponentTime <= 15);
+
+            const currentTurnColor = chessGame.turn() === 'w' ? 'white' : 'black';
+            if (currentTurnColor === myColor) {
+                myTimerEl.classList.add('active-turn');
+                opponentTimerEl.classList.remove('active-turn');
+            } else {
+                opponentTimerEl.classList.add('active-turn');
+                myTimerEl.classList.remove('active-turn');
+            }
+        }
+
+        function hasSufficientMaterial(color) {
+            const board = chessGame.board();
+            let pieces = [];
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const piece = board[r][c];
+                    if (piece && piece.color === color) {
+                        pieces.push(piece.type);
+                    }
+                }
+            }
+            if (pieces.length === 1 && pieces[0] === 'k') return false;
+            return true;
+        }
+
+        function startTimer() {
+            stopTimer();
+            timerInterval = setInterval(() => {
+                if (!hasOpponentJoined || chessGame.game_over()) return;
+
+                const currentTurnColor = chessGame.turn() === 'w' ? 'white' : 'black';
+                if (currentTurnColor === myColor) {
+                    if (myTime > 0) {
+                        myTime--;
+                    } else {
+                        stopTimer();
+                        const opponentColor = myColor === 'white' ? 'b' : 'w';
+                        if (!hasSufficientMaterial(opponentColor)) {
+                            triggerGameOver("Ничья!");
+                            if (!isBotGame) socket.emit('time_out', { winner: "Ничья!" });
+                        } else {
+                            if (isBotGame) {
+                                triggerGameOver("Шахматный Бот");
+                            } else {
+                                socket.emit('time_out', { winner: opName.innerText });
+                            }
+                        }
+                    }
+                } else {
+                    if (opponentTime > 0) {
+                        opponentTime--;
+                    } else {
+                        stopTimer();
+                        const myChessColor = myColor === 'white' ? 'w' : 'b';
+                        if (!hasSufficientMaterial(myChessColor)) {
+                            triggerGameOver("Ничья!");
+                        } else {
+                            if (isBotGame) {
+                                triggerGameOver(myUsername);
+                            }
+                        }
+                    }
+                }
+                updateTimerUI();
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = null;
+        }
+
+        function resetTimers() {
+            stopTimer();
+            myTime = GAME_TIME;
+            opponentTime = GAME_TIME;
+            myTimerEl.classList.remove('active-turn', 'low-time');
+            opponentTimerEl.classList.remove('active-turn', 'low-time');
+            updateTimerUI();
+        }
+
+        function clearOpponentBadge() {
+            opName.innerText = "Поиск соперника...";
+            opId.innerText = "";
+            opAvatar.style.backgroundImage = "none";
+            opAvatar.style.display = "none";
+        }
+
+        function inviteFriend() {
+            triggerHaptic('light');
+            switchScreen(findFriendScreen);
+            openTab('friends');
+        }
+
+        function sendDirectInvite(friendTgId) {
+            triggerHaptic('medium');
+            if (socket) {
+                socket.emit('send_direct_game_invite', {
+                    targetTgId: friendTgId,
+                    roomId: currentRoomId,
+                    stars: currentBet,
+                    senderUsername: myUsername
+                });
+            }
+            switchScreen(gamePlayScreen);
+        }
+
+        function respondToInvite(accepted) {
+            triggerHaptic('light');
+            document.getElementById('invite-received-modal').classList.remove('show');
+            if (incomingInviteData && socket) {
+                if (accepted) {
+                    socket.emit('accept_game_invite', {
+                        roomId: incomingInviteData.roomId,
+                        senderTgId: incomingInviteData.senderTgId
+                    });
+                    switchScreen(gamePlayScreen);
+                } else {
+                    socket.emit('decline_game_invite', {
+                        senderTgId: incomingInviteData.senderTgId,
+                        declinerUsername: myUsername
+                    });
+                }
+            }
+            incomingInviteData = null;
+        }
+
+        function closeDeclinedModal() {
+            triggerHaptic('light');
+            document.getElementById('invite-declined-modal').classList.remove('show');
+        }
+
+        function openTab(tabName) {
+            triggerHaptic('light');
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            const searchSection = document.getElementById('search-section');
+            const contentArea = document.getElementById('friends-content-area');
+
+            if (tabName === 'search') {
+                document.getElementById('nav-search-btn').classList.add('active');
+                searchSection.style.display = 'block';
+                contentArea.innerHTML = '';
+            } else if (tabName === 'invite') {
+                document.getElementById('nav-invite-btn').classList.add('active');
+                searchSection.style.display = 'none';
+                
+                const botUsername = "GRAMChessPVPBot"; 
+                const refLink = `https://t.me/${botUsername}?startapp=${myTgId}`;
+                const minWithdraw = 0.5; 
+                const canWithdraw = myRefEarnings >= minWithdraw && currentWalletAddress;
+
+                let friendsListHtml = '';
+                if (myInvitedFriendsDetails.length > 0) {
+                    myInvitedFriendsDetails.forEach(f => {
+                        friendsListHtml += `
+                            <div class="ref-item">
+                                <span class="friend-name">${f.username}</span>
+                                <span class="ref-earned">+${f.earnedFromHim.toFixed(2)} GRAM</span>
+                            </div>
+                        `;
+                    });
+                } else {
+                    friendsListHtml = `<div style="color: #8a99ad; font-size: 13px; text-align: center; margin-top: 10px;">Пока никто из друзей не сыграл платных партий</div>`;
+                }
+
+                contentArea.innerHTML = `
+                    <div class="referral-box">
+                        <div class="referral-title">Приглашай друзей!</div>
+                        <div class="referral-desc">Пригласи друга и получай пожизненно <b>3% от его выигрыша</b> с каждой игры!</div>
+                        <input type="text" class="referral-link-input" readonly value="${refLink}" id="ref-link-val">
+                        <button class="btn-copy-link" onclick="copyReferralLink('${refLink}')">Скопировать ссылку</button>
+                        
+                        <div class="earnings-card">
+                            <div class="earnings-row">
+                                <span style="font-size: 13px; color: #a0a0a5;">Твой доход с друзей:</span>
+                                <span class="earnings-val">${myRefEarnings.toFixed(3)} GRAM</span>
+                            </div>
+                            <button class="btn-withdraw" ${canWithdraw ? '' : 'disabled'} onclick="claimReferralEarnings()">
+                                ${!currentWalletAddress ? 'Подключите кошелек' : (myRefEarnings < minWithdraw ? `Мин. вывод ${minWithdraw} GRAM` : 'Вывести на кошелек')}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="ref-friends-title">Приглашенные игроки:</div>
+                    ${friendsListHtml}
+                `;
+            } else if (tabName === 'friends') {
+                document.getElementById('nav-friends-btn').classList.add('active');
+                searchSection.style.display = 'none';
+                renderFriendsList();
+                if (socket) {
+                    socket.emit('get_friends_status');
+                }
+            }
+        }
+
+        function copyReferralLink(link) {
+            triggerHaptic('success');
+            navigator.clipboard.writeText(link);
+            alert("Уникальная реферальная ссылка скопирована!");
+        }
+
+        function claimReferralEarnings() {
+            if (!currentWalletAddress) {
+                alert("Пожалуйста, подключите кошелек!");
+                return;
+            }
+            if (myRefEarnings < 0.5) {
+                alert("Минимальная сумма для вывода: 0.5 GRAM");
+                return;
+            }
+
+            triggerHaptic('success');
+            if (socket) {
+                socket.emit('claim_referral_earnings', { address: currentWalletAddress });
+            }
+        }
+
+        function renderFriendsList() {
+            const contentArea = document.getElementById('friends-content-area');
+            if (myFriends.length === 0) {
+                contentArea.innerHTML = `<div class="no-friends">У вас пока нет добавленных друзей</div>`;
+                return;
+            }
+
+            let html = '<div class="friends-list">';
+            myFriends.forEach(friend => {
+                const isAppOnline = friend.inApp === true;
+                const statusClass = isAppOnline ? 'online' : 'offline';
+                const statusText = isAppOnline ? 'В сети' : 'Не в сети';
+
+                html += `
+                    <div class="friend-item">
+                        <div class="friend-info">
+                            <div class="friend-avatar" style="background-image: url('${friend.avatar || 'default-avatar.png'}');"></div>
+                            <div class="friend-name-box">
+                                <div class="friend-name">${friend.username}</div>
+                                <div class="friend-status ${statusClass}">${statusText}</div>
+                            </div>
+                        </div>
+                        <button class="btn-invite-friend" onclick="sendDirectInvite('${friend.tgId}')">Пригласить</button>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            contentArea.innerHTML = html;
+        }
+
+        function searchFriend() {
+            const query = document.getElementById('search-friend-input').value.trim();
+            if (!query) return;
+            if (socket) {
+                socket.emit('search_user', { targetId: query });
+            }
+        }
+
+        try { 
+            // Подключаемся напрямую к серверу Render
+            socket = io('https://chessserver-6e8a.onrender.com'); 
+            
+            socket.on('connect', () => {
+                socket.emit('register_telegram_user', { 
+                    username: myUsername, 
+                    tgId: myTgId, 
+                    avatar: myAvatarUrl,
+                    referrerId: referrerId,
+                    inApp: true 
+                });
+            });
+
+            socket.on('update_referral_data', (data) => {
+                myRefEarnings = data.refEarnings || 0;
+                myInvitedFriendsDetails = data.invitedDetails || [];
+            });
+
+            socket.on('claim_success', (data) => {
+                alert(data.message || "Запрос на вывод принят!");
+                myRefEarnings = 0;
+                openTab('invite');
+            });
+
+            socket.on('update_friends_list', (data) => {
+                if (data && data.friends) {
+                    myFriends = data.friends;
+                    const friendsBtn = document.getElementById('nav-friends-btn');
+                    if (friendsBtn && friendsBtn.classList.contains('active')) {
+                        renderFriendsList();
+                    }
+                }
+            });
+
+            socket.on('receive_game_invite', (data) => {
+                incomingInviteData = data;
+                const betText = data.stars === 0 ? "Бесплатно" : `${data.stars} GRAM`;
+                document.getElementById('invite-modal-text').innerText = `${data.senderUsername} пригласил вас в игру (${betText})`;
+                document.getElementById('invite-received-modal').classList.add('show');
+                triggerHaptic('medium');
+            });
+
+            socket.on('game_invite_declined', (data) => {
+                document.getElementById('declined-modal-text').innerText = `${data.declinerUsername} отказался от игры`;
+                document.getElementById('invite-declined-modal').classList.add('show');
+                triggerHaptic('error');
+            });
+
+            socket.on('waiting_for_opponent', (data) => {
+                hasOpponentJoined = false;
+                if (data && data.roomId) currentRoomId = data.roomId;
+                clearOpponentBadge(); 
+                resetTimers();
+            });
+
+            socket.on('opponent_info', (data) => {
+                hasOpponentJoined = true;
+                opBadge.style.display = 'flex';
+                inviteBox.style.display = 'none';
+
+                opName.innerText = data.username;
+                opId.innerText = `ID: ${data.tgId}`;
+                opAvatar.style.backgroundImage = `url('${data.avatar}')`;
+                opAvatar.style.display = "block";
+            });
+
+            socket.on('game_started', (data) => {
+                myColor = data.color;
+                hasOpponentJoined = true;
+                isBotGame = false;
+                opBadge.style.display = 'flex';
+                inviteBox.style.display = 'none';
+                gameOverScreen.classList.remove('show');
+                
+                chessGame.reset();
+                if (data.fen) chessGame.load(data.fen);
+
+                if (data.stars !== undefined) {
+                    currentBet = data.stars;
+                }
+                updatePrizePoolUI(currentBet);
+
+                resetTimers();
+                startTimer();
+
+                renderBoardFromState();
+                triggerHaptic('success');
+            });
+
+            socket.on('table_occupied', (data) => {
+                alert(data.message || "Стол уже занят!");
+                socket.emit('leave_to_lobby');
+                switchScreen(betSelectionScreen);
+            });
+
+            socket.on('opponent_move', (moveData) => {
+                if (moveData.whiteTime !== undefined) {
+                    if (myColor === 'white') {
+                        myTime = moveData.whiteTime;
+                        opponentTime = moveData.blackTime;
+                    } else {
+                        myTime = moveData.blackTime;
+                        opponentTime = moveData.whiteTime;
+                    }
+                }
+
+                applyMoveWithAnimation({
+                    from: moveData.from,
+                    to: moveData.to,
+                    promotion: moveData.promotion || 'q'
+                }, () => {
+                    triggerHaptic('medium');
+                    updateTimerUI();
+                    if (chessGame.game_over()) {
+                        stopTimer();
+                        if (chessGame.in_checkmate()) {
+                            triggerGameOver(opName.innerText);
+                        } else {
+                            triggerGameOver("Ничья!");
+                        }
+                    }
+                });
+            });
+
+            socket.on('opponent_surrendered', (data) => {
+                stopTimer();
+                triggerGameOver(data.winnerName);
+            });
+
+            socket.on('game_over_timeout', (data) => {
+                stopTimer();
+                triggerGameOver(data.winnerName);
+            });
+
+            socket.on('opponent_left_permanently', () => {
+                hasOpponentJoined = false;
+                stopTimer();
+                clearOpponentBadge(); 
+                if (currentActionMode === 'create') {
+                    opBadge.style.display = 'none';
+                    inviteBox.style.display = 'flex';
+                }
+            });
+
+            socket.on('opponent_disconnected', (data) => {
+                hasOpponentJoined = false;
+                stopTimer();
+                clearOpponentBadge();
+                triggerGameOver(myUsername);
+            });
+        } catch (e) { socket = { emit: () => {}, on: () => {} }; }
+
+        const mainMenuScreen = document.getElementById('main-menu-screen');
+        const betSelectionScreen = document.getElementById('bet-selection-screen');
+        const findFriendScreen = document.getElementById('find-friend-screen');
+        const gamePlayScreen = document.getElementById('game-play-screen');
+        
+        function switchScreen(targetScreen) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            targetScreen.classList.add('active');
+
+            if (tg?.BackButton) {
+                if (targetScreen === mainMenuScreen) {
+                    tg.BackButton.hide();
+                } else {
+                    tg.BackButton.show();
+                }
+            }
+        }
+
+        if (tg?.BackButton) {
+            tg.BackButton.onClick(() => {
+                if (gamePlayScreen.classList.contains('active')) {
+                    document.getElementById('leave-game-btn').click();
+                } else {
+                    switchScreen(mainMenuScreen);
+                }
+            });
+        }
+
+        document.getElementById('play-btn').addEventListener('click', () => switchScreen(betSelectionScreen));
+        document.getElementById('find-friend-btn').addEventListener('click', () => {
+            switchScreen(findFriendScreen);
+            openTab('search');
+        });
+        document.getElementById('back-from-bets-btn').addEventListener('click', () => switchScreen(mainMenuScreen));
+        document.getElementById('back-from-search-btn').addEventListener('click', () => switchScreen(mainMenuScreen));
+
+        document.getElementById('leave-game-btn').addEventListener('click', () => {
+            if (isBotGame || !hasOpponentJoined) {
+                stopTimer();
+                socket.emit('leave_to_lobby');
+                switchScreen(betSelectionScreen);
+            } else if (isGameActive()) {
+                leaveDialogOverlay.classList.add('show');
+            } else {
+                stopTimer();
+                socket.emit('leave_to_lobby');
+                switchScreen(betSelectionScreen);
+            }
+        });
+
+        document.getElementById('dialog-resume-btn').addEventListener('click', () => { leaveDialogOverlay.classList.remove('show'); });
+        document.getElementById('dialog-surrender-btn').addEventListener('click', () => {
+            leaveDialogOverlay.classList.remove('show');
+            stopTimer();
+            socket.emit('player_surrender', { tgId: myTgId }); 
+            switchScreen(betSelectionScreen);
+        });
+
+        document.getElementById('rematch-btn').addEventListener('click', () => {
+            gameOverScreen.classList.remove('show');
+            if (isBotGame) {
+                startBotGame();
+                return;
+            }
+            hasOpponentJoined = false;
+            clearOpponentBadge();
+            resetTimers();
+            
+            chessGame.reset();
+            renderBoardFromState();
+            
+            if (currentActionMode === 'create') {
+                opBadge.style.display = 'none';
+                inviteBox.style.display = 'flex';
+            } else {
+                opBadge.style.display = 'flex';
+                inviteBox.style.display = 'none';
+            }
+
+            socket.emit('request_rematch', { stars: currentBet, mode: currentActionMode });
+        });
+
+        document.getElementById('exit-to-lobby-btn').addEventListener('click', () => {
+            stopTimer();
+            socket.emit('leave_to_lobby');
+            switchScreen(betSelectionScreen);
+        });
+
+        function startBotGame() {
+            triggerHaptic('light');
+            isBotGame = true;
+            hasOpponentJoined = true;
+            myColor = 'white';
+            currentBet = 0;
+
+            updatePrizePoolUI(0);
+
+            opBadge.style.display = 'flex';
+            inviteBox.style.display = 'none';
+            opName.innerText = "Шахматный Бот";
+            opId.innerText = "ID: Bot_AI";
+            opAvatar.style.backgroundImage = "url('default-avatar.png')";
+            opAvatar.style.display = "block";
+
+            gameOverScreen.classList.remove('show');
+            chessGame.reset();
+            resetTimers();
+            startTimer();
+
+            renderBoardFromState();
+            switchScreen(gamePlayScreen);
+        }
+
+        function makeBotMove() {
+            if (chessGame.game_over()) return;
+            const possibleMoves = chessGame.moves({ verbose: true });
+            if (possibleMoves.length === 0) return;
+
+            const pieceValues = { 'p': 1, 'n': 3, 'b': 3, 'r': 5, 'q': 9, 'k': 0 };
+
+            let bestMoves = [];
+            let maxScore = -999;
+
+            possibleMoves.forEach(move => {
+                let score = 0;
+                
+                chessGame.move(move);
+                if (chessGame.in_checkmate()) {
+                    score += 1000;
+                } else if (chessGame.in_check()) {
+                    score += 1.5;
+                }
+                chessGame.undo();
+
+                if (move.captured) {
+                    score += (pieceValues[move.captured] * 10) - pieceValues[move.piece];
+                }
+
+                if (['d4', 'd5', 'e4', 'e5'].includes(move.to)) {
+                    score += 0.5;
+                }
+
+                score += Math.random() * 0.5;
+
+                if (score > maxScore) {
+                    maxScore = score;
+                    bestMoves = [move];
+                } else if (Math.abs(score - maxScore) < 0.01) {
+                    bestMoves.push(move);
+                }
+            });
+
+            const chosenMove = bestMoves[Math.floor(Math.random() * bestMoves.length)];
+
+            applyMoveWithAnimation({
+                from: chosenMove.from,
+                to: chosenMove.to,
+                promotion: 'q'
+            }, () => {
+                triggerHaptic('medium');
+                updateTimerUI();
+                if (chessGame.game_over()) {
+                    stopTimer();
+                    if (chessGame.in_checkmate()) {
+                        triggerGameOver("Шахматный Бот");
+                    } else {
+                        triggerGameOver("Ничья!");
+                    }
+                }
+            });
+        }
+
+        function action(type, gramAmount) {
+            if (gramAmount > 0) {
+                if (!currentWalletAddress) {
+                    alert("Пожалуйста, подключите кошелек GRAM/TON в правом верхнем углу!");
+                    tonConnectUI.openModal();
+                    return;
+                }
+
+                if (currentGramBalance < gramAmount) {
+                    alert(`Недостаточно средств на кошельке! Ваш баланс: ${currentGramBalance.toFixed(2)} GRAM`);
+                    return;
+                }
+            }
+
+            triggerHaptic('light');
+            isBotGame = false;
+            currentBet = gramAmount;
+            currentActionMode = type;
+            hasOpponentJoined = false;
+            clearOpponentBadge();
+            resetTimers();
+            
+            updatePrizePoolUI(gramAmount);
+
+            gameOverScreen.classList.remove('show');
+
+            if (type === 'create') {
+                opBadge.style.display = 'none';
+                inviteBox.style.display = 'flex';
+            } else {
+                opBadge.style.display = 'flex';
+                inviteBox.style.display = 'none';
+            }
+
+            socket.emit('matchmaking_action', { type: type, stars: gramAmount });
+            switchScreen(gamePlayScreen);
+            
+            chessGame.reset();
+            renderBoardFromState();
+        }
+
+        const container = document.getElementById('game-container');
+        let piecesMap = {}; 
+        let selectedSquare = null;
+        let activeIndicators = [];
+        let checkHighlightEl = null;
+
+        function isGameActive() {
+            return hasOpponentJoined && !chessGame.game_over();
+        }
+
+        function squareToCoords(square) {
+            const col = square.charCodeAt(0) - 97;
+            const row = 8 - parseInt(square[1]);
+            return { col, row };
+        }
+
+        function coordsToSquare(col, row) {
+            const file = String.fromCharCode(97 + col);
+            const rank = (8 - row).toString();
+            return file + rank;
+        }
+
+        const pieceImageMap = {
+            'w': { 'p': 'pic1.png', 'n': 'kon1.png', 'b': 'slon1.png', 'r': 'ona1.png', 'q': 'fer1.png', 'k': 'king1.png' },
+            'b': { 'p': 'pic2.png', 'n': 'kon2.png', 'b': 'slon2.png', 'r': 'ona2.png', 'q': 'fer2.png', 'k': 'king2.png' }
+        };
+
+        function updateCheckHighlight() {
+            if (checkHighlightEl) {
+                checkHighlightEl.remove();
+                checkHighlightEl = null;
+            }
+
+            // Проверяем, находится ли текущая сторона под шахом
+            const turnColorChar = chessGame.turn(); // 'w' или 'b'
+            const myColorChar = (myColor === 'white') ? 'w' : 'b';
+
+            // КРАСНЫЙ ЦВЕТ высвечивается ИСКЛЮЧИТЕЛЬНО на экране игрока, чей король под ударом
+            if (chessGame.in_check() && turnColorChar === myColorChar) {
+                const board = chessGame.board();
+                let kingSquare = null;
+
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        const piece = board[r][c];
+                        if (piece && piece.type === 'k' && piece.color === myColorChar) {
+                            kingSquare = coordsToSquare(c, r);
+                            break;
+                        }
+                    }
+                    if (kingSquare) break;
+                }
+
+                if (kingSquare) {
+                    const coords = squareToCoords(kingSquare);
+                    checkHighlightEl = document.createElement('div');
+                    checkHighlightEl.className = 'king-in-check';
+
+                    let renderCol = (myColor === 'black') ? (7 - coords.col) : coords.col;
+                    let renderRow = (myColor === 'black') ? (7 - coords.row) : coords.row;
+
+                    checkHighlightEl.style.left = ((renderCol * 12.5) + 6.25) + '%';
+                    checkHighlightEl.style.top = ((renderRow * 12.5) + 6.25) + '%';
+                    container.appendChild(checkHighlightEl);
+                }
+            }
+        }
+
+        function renderBoardFromState() {
+            Object.values(piecesMap).forEach(p => p.remove());
+            piecesMap = {};
+            clearIndicators();
+
+            const board = chessGame.board();
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const piece = board[r][c];
+                    if (piece) {
+                        const sq = coordsToSquare(c, r);
+                        spawnPiece(piece.type, piece.color, c, r, sq);
+                    }
+                }
+            }
+
+            updateCheckHighlight();
+        }
+
+        function spawnPiece(type, color, col, row, sq) {
+            const piece = document.createElement('div');
+            piece.className = 'chess-piece';
+            
+            const imageSrc = pieceImageMap[color][type];
+            piece.style.backgroundImage = `url('${imageSrc}')`;
+            
+            let sizeW = (color === 'b') ? 10.0 : 11.5;
+            let sizeH = 11.5;
+            piece.style.width = sizeW + '%'; 
+            piece.style.height = sizeH + '%';
+            piece.style.backgroundSize = '100% 100%';
+            
+            piece.dataset.col = col; 
+            piece.dataset.row = row;
+            piece.dataset.color = color;
+            piece.dataset.square = sq;
+
+            updatePiecePosition(piece, col, row);
+            container.appendChild(piece);
+            piecesMap[sq] = piece;
+        }
+
+        function updatePiecePosition(piece, col, row) {
+            const cellSize = 12.5;
+            let renderCol = (myColor === 'black') ? (7 - col) : col;
+            let renderRow = (myColor === 'black') ? (7 - row) : row;
+            let whiteShiftY = (piece.dataset.color === 'w') ? -0.8 : 0;
+            piece.style.left = ((renderCol * cellSize) + 6.25) + '%';
+            piece.style.top = ((renderRow * cellSize) + 6.25 + whiteShiftY) + '%';
+        }
+
+        function applyMoveWithAnimation(moveObj, callback) {
+            const targetPiece = piecesMap[moveObj.from];
+            const capturedPiece = piecesMap[moveObj.to];
+
+            const isCapture = !!capturedPiece || chessGame.get(moveObj.to) !== null;
+
+            const moveResult = chessGame.move(moveObj);
+            if (!moveResult) return;
+
+            if (isCapture) {
+                playSound(captureSound);
+            } else {
+                playSound(moveSound);
+            }
+
+            if (capturedPiece) {
+                capturedPiece.classList.add('fade-out');
+                setTimeout(() => capturedPiece.remove(), 300);
+            }
+
+            if (targetPiece) {
+                const targetCoords = squareToCoords(moveObj.to);
+                targetPiece.dataset.col = targetCoords.col;
+                targetPiece.dataset.row = targetCoords.row;
+                targetPiece.dataset.square = moveObj.to;
+                
+                updatePiecePosition(targetPiece, targetCoords.col, targetCoords.row);
+
+                delete piecesMap[moveObj.from];
+                piecesMap[moveObj.to] = targetPiece;
+            }
+
+            setTimeout(() => {
+                renderBoardFromState();
+                if (callback) callback();
+            }, 350);
+        }
+
+        function clearIndicators() { 
+            activeIndicators.forEach(ind => ind.remove()); 
+            activeIndicators = []; 
+            Object.values(piecesMap).forEach(p => p.classList.remove('selected')); 
+        }
+
+        function showMoveIndicators(moves) {
+            clearIndicators();
+            if (!isGameActive()) return;
+
+            const activePieceEl = piecesMap[selectedSquare];
+            if (activePieceEl) activePieceEl.classList.add('selected');
+
+            moves.forEach(m => {
+                const targetCoords = squareToCoords(m.to);
+                const ind = document.createElement('div');
+                const isAttack = m.captured || m.flags.includes('c') || m.flags.includes('e');
+                ind.className = `move-indicator ${isAttack ? 'attack' : 'normal'}`;
+                
+                let renderCol = (myColor === 'black') ? (7 - targetCoords.col) : targetCoords.col;
+                let renderRow = (myColor === 'black') ? (7 - targetCoords.row) : targetCoords.row;
+                
+                ind.dataset.square = m.to;
+
+                ind.style.left = ((renderCol * 12.5) + 6.25) + '%';
+                ind.style.top = ((renderRow * 12.5) + 6.25) + '%';
+                container.appendChild(ind); 
+                activeIndicators.push(ind);
+            });
+        }
+
+        function triggerGameOver(winnerText) {
+            stopTimer();
+            clearIndicators();
+            if (checkHighlightEl) {
+                checkHighlightEl.remove();
+                checkHighlightEl = null;
+            }
+            if (winnerText === "Ничья!") {
+                gameOverText.innerText = "Ничья";
+            } else {
+                gameOverText.innerText = `Победил ${winnerText}`;
+            }
+            gameOverScreen.classList.add('show');
+            triggerHaptic('success');
+        }
+
+        container.addEventListener('click', (event) => {
+            if (!hasOpponentJoined || !isGameActive()) return;
+
+            const currentTurnColor = chessGame.turn() === 'w' ? 'white' : 'black';
+            if (currentTurnColor !== myColor) return;
+
+            const rect = container.getBoundingClientRect();
+            let clickCol = Math.floor((((event.clientX - rect.left) / rect.width) * 100) / 12.5);
+            let clickRow = Math.floor((((event.clientY - rect.top) / rect.height) * 100) / 12.5);
+
+            let col = (myColor === 'black') ? (7 - clickCol) : clickCol;
+            let row = (myColor === 'black') ? (7 - clickRow) : clickRow;
+
+            if (col < 0 || col >= 8 || row < 0 || row >= 8) return;
+
+            const clickedSquare = coordsToSquare(col, row);
+            const clickedIndicator = activeIndicators.find(ind => ind.dataset.square === clickedSquare);
+
+            if (clickedIndicator && selectedSquare) {
+                const moveObj = {
+                    from: selectedSquare,
+                    to: clickedSquare,
+                    promotion: 'q'
+                };
+
+                selectedSquare = null;
+                clearIndicators();
+
+                applyMoveWithAnimation(moveObj, () => {
+                    triggerHaptic('medium');
+                    updateTimerUI();
+                    
+                    if (isBotGame) {
+                        if (chessGame.game_over()) {
+                            stopTimer();
+                            if (chessGame.in_checkmate()) triggerGameOver(myUsername);
+                            else triggerGameOver("Ничья!");
+                        } else {
+                            setTimeout(makeBotMove, 500);
+                        }
+                    } else {
+                        socket.emit('player_move', {
+                            ...moveObj,
+                            myRemainingTime: myTime
+                        });
+
+                        if (chessGame.game_over()) {
+                            stopTimer();
+                            if (chessGame.in_checkmate()) {
+                                triggerGameOver(myUsername);
+                            } else {
+                                triggerGameOver("Ничья!");
+                            }
+                        }
+                    }
+                });
+                return;
+            }
+
+            const pieceOnSquare = chessGame.get(clickedSquare);
+            if (pieceOnSquare && ((pieceOnSquare.color === 'w' && myColor === 'white') || (pieceOnSquare.color === 'b' && myColor === 'black'))) {
+                selectedSquare = clickedSquare;
+                triggerHaptic('light');
+                const possibleMoves = chessGame.moves({ square: clickedSquare, verbose: true });
+                showMoveIndicators(possibleMoves);
+            } else {
+                clearIndicators(); 
+                selectedSquare = null;
+            }
+        });
+    </script>
+</body>
+</html>
