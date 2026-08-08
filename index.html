@@ -132,6 +132,7 @@
         .ref-item { display: flex; align-items: center; justify-content: space-between; background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
         .ref-earned { font-size: 13px; font-weight: 800; color: #34c759; }
 
+        /* СПИСОК ДРУЗЕЙ И ПОИСК */
         .friends-list { display: flex; flex-direction: column; gap: 10px; color: white; }
         .friend-item { display: flex; align-items: center; justify-content: space-between; background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 12px; padding: 12px; }
         .friend-info { display: flex; align-items: center; gap: 10px; }
@@ -141,7 +142,16 @@
         .friend-status { font-size: 11px; font-weight: 600; margin-top: 2px; }
         .friend-status.online { color: #34c759; }
         .friend-status.offline { color: #8a99ad; }
+        
+        .friend-actions-group { display: flex; align-items: center; gap: 6px; }
+        .btn-add-friend-plus {
+            background-color: #34c759; color: #ffffff; border: none; width: 36px; height: 36px;
+            border-radius: 10px; font-weight: bold; font-size: 20px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
         .btn-invite-friend { background-color: #2481cc; color: #ffffff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; }
+        .btn-invite-friend.pending { background-color: #48484a; color: #8e8e93; cursor: not-allowed; }
+        .btn-remove-friend { background-color: #ff3b30; color: #ffffff; border: none; padding: 8px 10px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; }
         .no-friends { color: #8a99ad; text-align: center; margin-top: 30px; font-size: 14px; }
 
         /* ЭКРАН ИГРЫ */
@@ -503,6 +513,19 @@
         </div>
     </div>
 
+    <!-- ВСПЛЫВАЮЩЕЕ ОКНО: НЕЛЬЗЯ ПОЗВАТЬ В ИГРУ -->
+    <div id="friend-not-accepted-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title" style="color: #ff9500;">Дружба не подтверждена</div>
+            <div style="color: #a0a0a5; font-size: 0.9rem; margin-bottom: 20px;">
+                Вы не можете пригласить игрока в игру, пока он не примет ваше предложение дружбы!
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn btn-ok" onclick="closeFriendNotAcceptedModal()">Понятно</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // --- АДРЕС СМАРТ-КОНТРАКТА TON ---
         const TON_GAME_CONTRACT_ADDRESS = "EQDJ6TlND2a5TyDvbYFUHDM0ESgCzcee5Vwp1Nw_SpY0-TLH";
@@ -787,8 +810,16 @@
             openTab('friends');
         }
 
-        function sendDirectInvite(friendTgId) {
+        // --- ПРОВЕРКА ПРИГЛАШЕНИЯ И ОТОБРАЖЕНИЕ МОДАЛКИ ПРИ НЕПОДТВЕРЖДЕННОЙ ДРУЖБЕ ---
+        function sendDirectInvite(friendTgId, isAccepted) {
             triggerHaptic('medium');
+            
+            // Если друг еще не принял дружбу
+            if (isAccepted === false || isAccepted === 'pending') {
+                document.getElementById('friend-not-accepted-modal').classList.add('show');
+                return;
+            }
+
             if (socket) {
                 socket.emit('send_direct_game_invite', {
                     targetTgId: friendTgId,
@@ -798,6 +829,11 @@
                 });
             }
             switchScreen(gamePlayScreen);
+        }
+
+        function closeFriendNotAcceptedModal() {
+            triggerHaptic('light');
+            document.getElementById('friend-not-accepted-modal').classList.remove('show');
         }
 
         function respondToInvite(accepted) {
@@ -911,9 +947,10 @@
             }
         }
 
+        // --- ОТОБРАЖЕНИЕ СПИСКА ДРУЗЕЙ С ПРОВЕРКОЙ СТАТУСА И КНОПКОЙ УДАЛЕНИЯ ---
         function renderFriendsList() {
             const contentArea = document.getElementById('friends-content-area');
-            if (myFriends.length === 0) {
+            if (!myFriends || myFriends.length === 0) {
                 contentArea.innerHTML = `<div class="no-friends">У вас пока нет добавленных друзей</div>`;
                 return;
             }
@@ -924,6 +961,9 @@
                 const statusClass = isAppOnline ? 'online' : 'offline';
                 const statusText = isAppOnline ? 'В сети' : 'Не в сети';
 
+                // Если статус дружбы не accepted или pending
+                const isAccepted = friend.status ? friend.status === 'accepted' : true;
+
                 html += `
                     <div class="friend-item">
                         <div class="friend-info">
@@ -933,7 +973,13 @@
                                 <div class="friend-status ${statusClass}">${statusText}</div>
                             </div>
                         </div>
-                        <button class="btn-invite-friend" onclick="sendDirectInvite('${friend.tgId}')">Пригласить</button>
+                        <div class="friend-actions-group">
+                            ${isAccepted 
+                                ? `<button class="btn-invite-friend" onclick="sendDirectInvite('${friend.tgId}', true)">Пригласить</button>`
+                                : `<button class="btn-invite-friend pending" onclick="sendDirectInvite('${friend.tgId}', false)">Ожидание...</button>`
+                            }
+                            <button class="btn-remove-friend" onclick="removeFriend('${friend.tgId}')">Удалить</button>
+                        </div>
                     </div>
                 `;
             });
@@ -941,12 +987,36 @@
             contentArea.innerHTML = html;
         }
 
+        // --- УДАЛЕНИЕ ДРУГА ---
+        function removeFriend(friendTgId) {
+            triggerHaptic('medium');
+            if (confirm("Вы уверены, что хотите удалить этого игрока из друзей?")) {
+                if (socket) {
+                    socket.emit('remove_friend', { targetTgId: friendTgId });
+                }
+                // Локально удаляем из массива
+                myFriends = myFriends.filter(f => f.tgId !== friendTgId);
+                renderFriendsList();
+            }
+        }
+
+        // --- ПОИСК И ДОБАВЛЕНИЕ ДРУГА ЧЕРЕЗ «+» ---
         function searchFriend() {
             const query = document.getElementById('search-friend-input').value.trim();
             if (!query) return;
             if (socket) {
                 socket.emit('search_user', { targetId: query });
             }
+        }
+
+        function addFriendFromSearch(targetTgId) {
+            triggerHaptic('success');
+            if (socket) {
+                // Вызываем добавление
+                socket.emit('search_user', { targetId: targetTgId });
+            }
+            alert("Запрос отправлен! Игрок добавлен в список ожидания.");
+            openTab('friends');
         }
 
         try { 
@@ -972,6 +1042,34 @@
                 alert(data.message || "Запрос на вывод принят!");
                 myRefEarnings = 0;
                 openTab('invite');
+            });
+
+            // РЕЗУЛЬТАТ ПОИСКА ДРУГА
+            socket.on('search_user_result', (data) => {
+                const contentArea = document.getElementById('friends-content-area');
+                if (data.success && data.user) {
+                    const foundUser = data.user;
+                    const isAppOnline = foundUser.inApp === true;
+                    const statusClass = isAppOnline ? 'online' : 'offline';
+                    const statusText = isAppOnline ? 'В сети' : 'Не в сети';
+
+                    contentArea.innerHTML = `
+                        <div class="friends-list">
+                            <div class="friend-item">
+                                <div class="friend-info">
+                                    <div class="friend-avatar" style="background-image: url('${foundUser.avatar || 'default-avatar.png'}');"></div>
+                                    <div class="friend-name-box">
+                                        <div class="friend-name">${foundUser.username}</div>
+                                        <div class="friend-status ${statusClass}">${statusText}</div>
+                                    </div>
+                                </div>
+                                <button class="btn-add-friend-plus" onclick="addFriendFromSearch('${foundUser.tgId}')" title="Добавить в друзья">+</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    contentArea.innerHTML = `<div class="no-friends">${data.message || 'Игрок не найден'}</div>`;
+                }
             });
 
             socket.on('update_friends_list', (data) => {
